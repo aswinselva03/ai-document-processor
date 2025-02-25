@@ -35,23 +35,23 @@ param location string
 ])
 param aoaiLocation string
 
-@description('Forked Git repository URL for the Static Web App')
-param user_gh_url string = ''
-param userPrincipalId string
-// Environment name. This is automatically set by the 'azd' tool.
-@description('Environment name used as a tag for all resources. This is directly mapped to the azd-environment.')
-param environmentName string = 'dev'
-param functionAppName string = 'functionapp-${environmentName}-${uniqueString('${location}${resourceGroup().id}')}'
-param staticWebAppName string = 'static-${environmentName}-${uniqueString('${location}${resourceGroup().id}')}'
-var tenantId = tenant().tenantId
-param storageAccountName string = 'azfn${uniqueString('${location}${resourceGroup().id}')}'
-param keyVaultName string = 'keyvault-${uniqueString('${location}${resourceGroup().id}')}'
-param aoaiName string = 'aoai-${uniqueString(resourceGroup().id)}'
-param aiServicesName string = 'aiServices-${uniqueString(resourceGroup().id)}'
-param cosmosAccountName string = 'cosmos-${uniqueString(resourceGroup().id)}'
-param promptsContainer string = 'promptscontainer'
-param configContainerName string = 'config'
-param cosmosDatabaseName string = 'openaiPromptsDB'
+  @description('Forked Git repository URL for the Static Web App')
+  param user_gh_url string = ''
+  param userPrincipalId string
+  // Environment name. This is automatically set by the 'azd' tool.
+  @description('Environment name used as a tag for all resources. This is directly mapped to the azd-environment.')
+  param environmentName string = 'dev'
+  param functionAppName string = 'functionapp-${environmentName}-${uniqueString('${location}${resourceGroup().id}')}'
+  param staticWebAppName string = 'static-${environmentName}-${uniqueString('${location}${resourceGroup().id}')}'
+  var tenantId = tenant().tenantId
+  param storageAccountName string = 'azfn${uniqueString('${location}${resourceGroup().id}')}'
+  param keyVaultName string = 'keyvault-${uniqueString('${location}${resourceGroup().id}')}'
+  param aoaiName string = 'aoai-${uniqueString(resourceGroup().id)}'
+  param aiServicesName string = 'aiServices-${uniqueString(resourceGroup().id)}'
+  param cosmosAccountName string = 'cosmos-${uniqueString(resourceGroup().id)}'
+  param promptsContainer string = 'promptscontainer'
+  param configContainerName string = 'config'
+  param cosmosDatabaseName string = 'openaiPromptsDB'
 
 
 // @description('Choose the deployment method: GitHubActions or SWA_CLI')
@@ -60,6 +60,19 @@ param cosmosDatabaseName string = 'openaiPromptsDB'
 //   'SWA_CLI'
 // ])
 // param deploymentMethod string = 'SWA_CLI'
+
+//initialization for network isolation and private endpoints
+var azdTags = { 'azd-env-name': environmentName }
+
+@description('Key-value pairs of tags to assign to all resources. The default azd tags are automatically added.')
+param deploymentTags object
+var tags = union(azdTags, deploymentTags)
+
+
+@description('Network isolation? If yes it will create the private endpoints.')
+@allowed([true, false])
+param networkIsolation bool = false
+var _networkIsolation = networkIsolation
 
 // 1. Key Vault
 module keyVault './modules/keyVault.bicep' = {
@@ -183,6 +196,19 @@ module blobContributor './modules/rbac/blob-contributor.bicep' = if (userPrincip
     principalType: 'User'
   }
 }
+
+//Todo:
+// vnet module and vnet reuse params to be implemented
+module blobDnsZone './modules/network/private-dns-zones.bicep' = if(_networkIsolation && !_vnetReuse) { 
+  name: 'blob-dnzones'
+  scope: resourceGroup()
+  params: {
+    dnsZoneName: 'privatelink.blob.core.windows.net' 
+    tags: tags
+    virtualNetworkName: _networkIsolation?vnet.outputs.name:'' 
+  }
+}
+
 
 output RESOURCE_GROUP string = resourceGroup().name
 output FUNCTION_APP_NAME string = functionApp.outputs.name
